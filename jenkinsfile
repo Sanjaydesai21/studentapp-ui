@@ -1,0 +1,48 @@
+pipeline {
+    agent {label 'worker'}
+
+    stages {
+        stage('checkout') {
+            steps {
+                git 'https://github.com/mayurpandit25/studentapp-ui.git'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh '''
+                mvn clean package
+                aws s3 cp /home/ubuntu/workspace/webserver_pipeline/target/studentapp-2.2-SNAPSHOT.war s3://artifact-amazon-bucket23543
+                echo "build is successful"
+                '''
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh '''
+                mvn clean verify sonar:sonar \
+                -Dsonar.projectKey=student \
+                -Dsonar.host.url=http://3.238.4.108:9000 \
+                -Dsonar.login=sqp_c0bf1f85233b0738174bd8f1b817fd4cee9709a3
+                echo "Testing is successful"
+                '''
+            }
+        }
+
+        stage('Deployment') {
+            steps {
+                sh '''
+                sudo curl -O https://dlcdn.apache.org/tomcat/tomcat-9/v9.0.117/bin/apache-tomcat-9.0.117.tar.gz
+                sudo mv apache-tomcat-9.0.117.tar.gz /opt
+                sudo tar -xzf /opt/apache-tomcat-9.0.117.tar.gz -C /opt
+                sudo rm -rf /opt/apache-tomcat-9.0.117.tar.gz
+                sudo mv /home/ubuntu/workspace/webserver_pipeline/target/studentapp-2.2-SNAPSHOT.war  /opt/apache-tomcat-9.0.117/webapps/student.war
+                sudo chmod +x /opt/apache-tomcat-9.0.117/bin/catalina.sh
+                sudo bash /opt/apache-tomcat-9.0.117/bin/catalina.sh start
+                echo "Deployment is successfull"
+                '''
+            }
+        }
+    }
+}
