@@ -1,48 +1,96 @@
 pipeline {
-    agent {label 'worker'}
+    agent {
+        label 'worker'
+    }
+
+    environment {
+        my_aws_credential = credentials('aws-access')
+    }
+
+    tools {
+        maven 'maven1'
+    }
 
     stages {
-        stage('checkout') {
+        stage('Checkout') {
             steps {
                 git 'https://github.com/mayurpandit25/studentapp-ui.git'
+                echo 'clonning is successful'
             }
         }
 
         stage('Build') {
             steps {
-                sh '''
-                mvn clean package
-                aws s3 cp /home/ubuntu/workspace/webserver_pipeline/target/studentapp-2.2-SNAPSHOT.war s3://artifact-amazon-bucket23543
-                echo "build is successful"
-                '''
+                sh 'mvn clean package'
+                echo 'build is successful'
+            }
+
+            post {
+                success {
+                    archiveArtifacts 'target/*.war'
+                    sh 'ls -la'
+                }
             }
         }
 
-        stage('Test') {
+        stage('SonarQube Analysis') {
             steps {
-                sh '''
-                mvn clean verify sonar:sonar \
-                -Dsonar.projectKey=student \
-                -Dsonar.host.url=http://3.238.4.108:9000 \
-                -Dsonar.login=sqp_c0bf1f85233b0738174bd8f1b817fd4cee9709a3
-                echo "Testing is successful"
-                '''
+                withSonarQubeEnv('sonar') {
+                    sh 'mvn sonar:sonar'
+                }
             }
         }
 
-        stage('Deployment') {
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    script {
+                        try {
+                            def qg = waitForQualityGate()
+                            echo "Quality Gate Status: ${qg.status}"
+                            if (qg.status != 'OK') {
+                                error "Quality Gate failed: ${qg.status}"
+                            }
+                        } catch (Exception e) {
+                            echo "Quality Gate check failed: ${e.message}"
+                            error "Quality Gate stage failed"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube Report') {
+            steps {
+                script {
+                    echo "SonarQube Report successfully generated"
+                }
+            }
+        }
+
+        stage('Build with Docker') {
             steps {
                 sh '''
-                sudo curl -O https://dlcdn.apache.org/tomcat/tomcat-9/v9.0.117/bin/apache-tomcat-9.0.117.tar.gz
-                sudo mv apache-tomcat-9.0.117.tar.gz /opt
-                sudo tar -xzf /opt/apache-tomcat-9.0.117.tar.gz -C /opt
-                sudo rm -rf /opt/apache-tomcat-9.0.117.tar.gz
-                sudo mv /home/ubuntu/workspace/webserver_pipeline/target/studentapp-2.2-SNAPSHOT.war  /opt/apache-tomcat-9.0.117/webapps/student.war
-                sudo chmod +x /opt/apache-tomcat-9.0.117/bin/catalina.sh
-                sudo bash /opt/apache-tomcat-9.0.117/bin/catalina.sh start
-                echo "Deployment is successfull"
+                docker build -t studentapp .
+                ls -la
+                docker images
                 '''
+                echo 'Docker image build is successful'
+            }
+        }
+
+        stage('Push Docker Image to ECR') {
+            steps {
+                script {
+                    sh '''
+                    aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 506995420953.dkr.ecr.us-east-2.amazonaws.com
+                    docker tag studentapp:latest 506995420953.dkr.ecr.us-east-2.amazonaws.com/studentapp:latest
+                    docker push 506995420953.dkr.ecr.us-east-2.amazonaws.com/studentapp:latest
+                    '''
+                    echo 'Docker image pushed to ECR successfully'
+                }
             }
         }
     }
 }
+
