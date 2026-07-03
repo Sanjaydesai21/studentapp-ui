@@ -4,7 +4,7 @@ pipeline {
     }
 
     environment {
-        my_aws_credential = credentials('aws-access')
+        my_aws_credentials = credentials('aws-access')
     }
 
     tools {
@@ -41,6 +41,7 @@ pipeline {
             }
         }
 
+
         stage('Quality Gate') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -62,56 +63,26 @@ pipeline {
 
         stage('SonarQube Report') {
             steps {
-                script {
-                    echo "SonarQube Report successfully generated"
-                }
+                sh 'ls -la'
+                echo 'SonarQube analysis completed'
             }
         }
 
-        stage('Build with Docker') {
+        stage('Docker Build') {
             steps {
-                sh '''
-                docker build -t studentapp .
-                ls -la
-                docker images
-                '''
+                sh 'docker build -t studentapp .'
                 echo 'Docker image build is successful'
             }
         }
 
-        stage('Push Docker Image to ECR') {
-            steps {
-                script {
-                    sh '''
-                    aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 506995420953.dkr.ecr.us-east-2.amazonaws.com
-                    docker tag studentapp:latest 506995420953.dkr.ecr.us-east-2.amazonaws.com/studentapp:latest
-                    docker push 506995420953.dkr.ecr.us-east-2.amazonaws.com/studentapp:latest
-                    '''
-                    echo 'Docker image pushed to ECR successfully'
-                }
-            }
-        }
-
-        stage('Deploy to EKS') {
+        stage('Docker push to ECR') {
             steps {
                 sh '''
-                aws eks update-kubeconfig --name my-cluster-mayur --region us-east-2
-                kubectl apply -f student-deploy-svc.yaml
-                kubectl get pods
-                sleep 30
-                kubectl get svc
+                aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 506995420953.dkr.ecr.us-east-2.amazonaws.com
+                docker tag studentapp:latest 506995420953.dkr.ecr.us-east-2.amazonaws.com/studentapp:latest
+                docker push 506995420953.dkr.ecr.us-east-2.amazonaws.com/studentapp:latest
                 '''
-                echo 'Deployment to Kubernetes is successful'
             }
-        }
-    }
-
-    post {
-        success {
-            echo 'Pipeline executed successfully.'
-        }
-        failure {
-            echo 'Pipeline execution failed.'
         }
     }
 }
