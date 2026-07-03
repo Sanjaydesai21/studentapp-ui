@@ -12,43 +12,41 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                git 'https://github.com/mayurpandit25/studentapp-ui.git'
-                echo 'clonning is successful'
+        stage('Checkout'){
+            steps{
+                git 'https://github.com/Sanjaydesai21/studentapp-ui.git'
+                echo "Checkout Completed"
             }
         }
 
-        stage('Build') {
-            steps {
+        stage('Build'){
+            steps{
                 sh 'mvn clean package'
-                echo 'build is successful'
-            }
+                sh 'ls -al'
+                echo "Build Completed"
+            } 
 
-            post {
-                success {
+            post{
+                success{
                     archiveArtifacts 'target/*.war'
-                    sh 'ls -la'
+                    sh 'ls -al'
                 }
             }
         }
 
-        stage('Artifacts upload to S3') {
-            steps {
-                sh '''
-                aws s3 cp target/studentapp-2.2-SNAPSHOT.war s3://mayur-jenkins-bucket/
-                '''
+        stage('Artifact push to s3'){
+            steps{
+                sh 'aws s3 cp target/studentapp-2.2-SNAPSHOT.war s3://artifact-to-s3-bucket-student/'
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('sonar') {
+        stage('SonarQube analysis'){
+            steps{
+                withSonarQubeEnv('sonar-env') {
                     sh 'mvn sonar:sonar'
                 }
             }
         }
-
 
         stage('Quality Gate') {
             steps {
@@ -69,50 +67,41 @@ pipeline {
             }
         }
 
-        stage('SonarQube Report') {
-            steps {
-                sh 'ls -la'
-                echo 'SonarQube analysis completed'
+        stage('Sonar report'){
+            steps{
+                echo "Sonar Report Completed"
             }
         }
 
-        stage('Docker Build') {
-            steps {
+        stage('Docker build'){
+            steps{
                 sh 'docker build -t studentapp .'
                 echo 'Docker image build is successful'
             }
         }
 
-        stage('Docker push to ECR') {
-            steps {
+        stage('Docker push'){
+            steps{
                 sh '''
-                aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 506995420953.dkr.ecr.us-east-2.amazonaws.com
-                docker tag studentapp:latest 506995420953.dkr.ecr.us-east-2.amazonaws.com/studentapp:latest
-                docker push 506995420953.dkr.ecr.us-east-2.amazonaws.com/studentapp:latest
+                    aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 194226864100.dkr.ecr.ap-south-1.amazonaws.com
+                    docker tag studentapp:latest 194226864100.dkr.ecr.ap-south-1.amazonaws.com/studentapp:latest
+                    docker push 194226864100.dkr.ecr.ap-south-1.amazonaws.com/studentapp:latest
                 '''
             }
         }
 
-        stage('Deploy to EKS') {
-            steps {
+        stage('Deploy to eks'){
+            steps{
                 sh '''
-                aws eks update-kubeconfig --name my-cluster-student --region us-east-2
-                kubectl apply -f student-deploy-svc.yaml
-                kubectl get pods
-                sleep 30 
-                kubectl get svc -o wide
+                    aws eks update-kubeconfig --region ap-south-1 --name student-cluster
+                    kubectl apply -f student-deploy-svc.yaml
+                    kubectl get pods
+                    sleep 30
+                    kubectl get pods
+                    kubectl get svc -o wide
                 '''
             }
         }
-    }
 
-    post {
-        success {
-            echo 'Pipeline succeeded'
-        }
-        failure {
-            echo 'Pipeline failed'
-        }
     }
 }
-
