@@ -84,6 +84,26 @@ pipeline {
                 '''
             }
         }
+
+        stage('Deploy to EKS') {
+            steps {
+                sh '''
+                aws eks update-kubeconfig --name my-cluster-student --region us-east-2
+                kubectl apply -f student-deploy-svc.yaml
+                kubectl get pods
+                sleep 30 
+                kubectl get svc -o wide
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline succeeded'
+        }
+        failure {
+            echo 'Pipeline failed'
+        }
     }
 }
-
